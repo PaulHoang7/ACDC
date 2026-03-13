@@ -1,0 +1,44 @@
+# Data
+data/raw/
+data/processed/
+*.nii.gz
+*.nii
+
+# Outputs
+outputs/checkpoints/*.pth
+outputs/checkpoints/*.pt
+outputs/logs/
+outputs/predictions/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.eggs/
+.eggs/
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Wandb / Tensorboard
+wandb/
+runs/

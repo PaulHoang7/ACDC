@@ -1,0 +1,29 @@
+# Central path configuration — single source of truth
+# All modules read paths from here. Never hardcode paths elsewhere.
+
+# NFS root for all project outputs
+nfs_root: /mnt/nfs-data/tin_dataset/ACDC
+
+# Raw dataset (read-only — never modify)
+raw_data: ${nfs_root}/training
+raw_testing: ${nfs_root}/testing
+
+# Processed outputs
+processed: ${nfs_root}/processed
+slices_dir: ${nfs_root}/processed/2d_slices
+metadata_dir: ${nfs_root}/processed/metadata
+
+# Splits
+splits_dir: ${nfs_root}/splits
+
+# Training outputs
+checkpoints_dir: ${nfs_root}/checkpoints
+logs_dir: ${nfs_root}/logs
+
+# Evaluation outputs
+predictions_dir: ${nfs_root}/predictions
+figures_dir: ${nfs_root}/figures
+reports_dir: ${nfs_root}/reports
+
+# Temporary / cache
+cache_dir: ${nfs_root}/cache

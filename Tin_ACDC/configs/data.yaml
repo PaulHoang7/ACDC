@@ -1,0 +1,52 @@
+# Data preprocessing and augmentation configuration
+# Must be identical across all models in the main benchmark.
+
+preprocessing:
+  image_size: [256, 256]
+  # Per-volume z-score normalization
+  normalization: zscore
+  # Clip extreme intensities before normalization
+  clip_percentiles: [0.5, 99.5]
+  # Interpolation for resize
+  image_interpolation: bilinear
+  mask_interpolation: nearest
+
+  # Class mapping (verified from ACDC masks)
+  num_classes: 4
+  class_names: [background, RV, MYO, LV]
+  class_ids: [0, 1, 2, 3]
+
+slice_extraction:
+  # Only extract slices from labeled ED/ES frames
+  source: labeled_frames
+  # Keep empty slices? (all background)
+  keep_empty_slices: false
+
+augmentation:
+  enabled: true
+  # Applied only during training
+  train:
+    random_rotate:
+      limit: 15
+      p: 0.5
+    random_scale:
+      scale_limit: 0.1
+      p: 0.3
+    shift_scale_rotate:
+      shift_limit: 0.05
+      scale_limit: 0.1
+      rotate_limit: 15
+      p: 0.5
+    horizontal_flip:
+      p: 0.5
+    elastic_transform:
+      alpha: 50
+      sigma: 10
+      p: 0.2
+    brightness_contrast:
+      brightness_limit: 0.1
+      contrast_limit: 0.1
+      p: 0.3
+    gaussian_noise:
+      var_limit: [5.0, 20.0]
+      p: 0.2

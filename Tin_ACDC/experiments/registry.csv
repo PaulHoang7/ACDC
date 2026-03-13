@@ -1,0 +1,1 @@
+experiment_id,date,git_commit,model,init_mode,pretrained_source,split_or_fold,seed,image_size,loss_config,optimizer_config,augmentation_config,best_val_mean_dice,best_val_hd95,final_test_mean_dice,final_test_hd95,notes

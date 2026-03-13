@@ -1,0 +1,56 @@
+# Model architecture configuration
+# All 3 models share the same encoder family for fair comparison.
+
+encoder:
+  backbone: resnet34
+  # Feature channels at each stage: stem, stage1, stage2, stage3, stage4
+  channels: [64, 64, 128, 256, 512]
+
+decoder:
+  channels: [256, 128, 64, 32]
+  upsample_mode: bilinear
+  # Conv block: Conv -> BN -> ReLU, repeated twice
+  norm: BatchNorm
+  activation: ReLU
+
+# --- Model definitions ---
+
+m1_unetr34:
+  name: UNetR34
+  encoder: ${encoder}
+  decoder: ${decoder}
+  num_classes: 4
+  attention: false
+  boundary_head: false
+  deep_supervision: false
+
+m2_attunetr34:
+  name: AttUNetR34
+  encoder: ${encoder}
+  decoder: ${decoder}
+  num_classes: 4
+  attention: true
+  boundary_head: false
+  deep_supervision: false
+
+m3_boundarydsunetr34:
+  name: BoundaryDSUNetR34
+  encoder: ${encoder}
+  decoder: ${decoder}
+  num_classes: 4
+  attention: false
+  boundary_head: true
+  deep_supervision: true
+  boundary:
+    # Boundary target: morphological edge from mask
+    target_method: morphological_edge
+    kernel_size: 3
+  deep_supervision_stages: [2, 3]  # decoder stage indices
+
+# --- Pretrained weights ---
+
+pretrained:
+  # ImageNet-pretrained ResNet34 (torchvision)
+  source: torchvision
+  model_name: resnet34
+  weights: IMAGENET1K_V1

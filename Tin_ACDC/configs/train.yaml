@@ -1,0 +1,61 @@
+# Training hyperparameters
+# Identical across all models in the main benchmark.
+
+seed: 42
+
+training:
+  epochs: 200
+  batch_size: 16
+  num_workers: 4
+  pin_memory: true
+  mixed_precision: true
+  gradient_clip_norm: 1.0
+
+optimizer:
+  name: AdamW
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+
+  # Differential LR for fine-tune mode
+  finetune:
+    encoder_lr: 1.0e-4
+    decoder_lr: 1.0e-3
+
+scheduler:
+  name: CosineAnnealingLR
+  T_max: ${training.epochs}
+  eta_min: 1.0e-6
+
+early_stopping:
+  enabled: true
+  monitor: val_mean_dice
+  mode: max
+  patience: 30
+  min_delta: 0.001
+
+checkpoint:
+  save_best: true
+  monitor: val_mean_dice
+  mode: max
+  save_last: true
+
+loss:
+  # M1 & M2: DiceLoss + CrossEntropyLoss
+  seg_loss:
+    dice_weight: 1.0
+    ce_weight: 1.0
+  # M3 additional losses
+  boundary_loss:
+    weight: 0.2   # lambda_b
+    type: bce     # BCE on boundary map
+  deep_supervision_loss:
+    weight: 0.2   # lambda_ds
+
+# Split protocol
+split:
+  # Fast dev: fixed 80/20 patient-level split
+  dev_split:
+    train_ratio: 0.8
+    val_ratio: 0.2
+  # Thesis-grade: 5-fold CV
+  cv_folds: 5
