@@ -72,17 +72,22 @@ def main():
 
     img_size = tuple(data_cfg["preprocessing"]["image_size"])
     val_tf = get_val_transforms(img_size)
-    metadata_csv = f"{paths['metadata_dir']}/patient_metadata.csv"
+    slice_csv = f"{paths['reports_dir']}/slice_metadata.csv"
+    volume_csv = f"{paths['metadata_dir']}/patient_metadata.csv"
+    metadata_csv = slice_csv if Path(slice_csv).exists() else volume_csv
+    logger.info(f"Dataset source: {metadata_csv}")
+
     dataset = ACDCSliceDataset(metadata_csv, split_file, args.split,
-                               transform=val_tf, keep_empty=True)
+                               transform=val_tf, keep_empty=True,
+                               backend="auto")
     loader = DataLoader(dataset, batch_size=16, shuffle=False, num_workers=4)
     logger.info(f"Evaluating {len(dataset)} slices ({args.split} set)")
 
     # Predict
     predictions = predict_dataset(model, loader, device)
 
-    # Patient-level metrics
-    metadata_df = pd.read_csv(metadata_csv)
+    # Patient-level metrics (always use volume-level CSV for GT paths)
+    metadata_df = pd.read_csv(volume_csv)
     results_df = evaluate_patient_volumes(predictions, metadata_df)
 
     # Save results
