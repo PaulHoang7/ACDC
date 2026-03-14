@@ -4,6 +4,10 @@ PyTorch Dataset for 2D slice-wise ACDC segmentation.
 Supports two loading backends:
     1. raw:    load from NIfTI volumes on the fly (slower, no disk overhead)
     2. cached: load from preprocessed .npz files (faster, requires preprocess.py)
+
+Supports two metadata sources:
+    - patient_metadata.csv (volume-level) → expands to slices at runtime (raw)
+    - slice_metadata.csv   (slice-level)  → direct index (raw or cached)
 """
 import json
 from pathlib import Path
@@ -13,7 +17,9 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
+
+from .transforms import get_train_transforms, get_val_transforms
 
 
 class ACDCSliceDataset(Dataset):
@@ -32,23 +38,26 @@ class ACDCSliceDataset(Dataset):
         split_file: str,
         split_key: str = "train",
         transform: Optional[Callable] = None,
+        target_size: Tuple[int, int] = (256, 256),
         clip_percentiles: Tuple[float, float] = (0.5, 99.5),
         keep_empty: bool = False,
         backend: str = "auto",
     ):
         """
         Args:
-            metadata_csv: path to patient_metadata.csv OR slice_metadata.csv
-            split_file:   path to split JSON (dev_split.json or fold_X.json)
-            split_key:    "train" or "val"
-            transform:    albumentations Compose (applied after loading)
+            metadata_csv:     path to slice_metadata.csv or patient_metadata.csv
+            split_file:       path to split JSON (dev_split.json or fold_X.json)
+            split_key:        "train" or "val"
+            transform:        albumentations Compose (applied after loading)
+            target_size:      (H, W) for on-the-fly resize in raw mode
             clip_percentiles: for on-the-fly z-score normalization (raw mode)
-            keep_empty:   include all-background slices
-            backend:      "raw"   = load from NIfTI every time
-                          "cached"= load from .npz (requires preprocess.py)
-                          "auto"  = use cached if cached_image_path col exists
+            keep_empty:       include all-background slices
+            backend:          "raw"   = load from NIfTI every time
+                              "cached"= load from .npz (requires preprocess.py --cache)
+                              "auto"  = cached if .npz paths exist, else raw
         """
         self.transform = transform
+        self.target_size = target_size
         self.clip_percentiles = clip_percentiles
         self.keep_empty = keep_empty
 
@@ -57,13 +66,18 @@ class ACDCSliceDataset(Dataset):
             split = json.load(f)
         patient_ids = set(split[split_key])
 
-        # Filter to this split
+        # Filter to this split's patients
         df = df[df["patient_id"].isin(patient_ids)].reset_index(drop=True)
 
+        # Detect CSV type: slice-level vs volume-level
+        self.is_slice_csv = "slice_index" in df.columns
+
         # Detect backend
-        has_cache = ("cached_image_path" in df.columns
-                     and df["cached_image_path"].notna().any()
-                     and df["cached_image_path"].str.len().max() > 0)
+        has_cache = (
+            "cached_image_path" in df.columns
+            and df["cached_image_path"].notna().any()
+            and (df["cached_image_path"].str.len() > 0).any()
+        )
 
         if backend == "auto":
             self.backend = "cached" if has_cache else "raw"
@@ -71,30 +85,37 @@ class ACDCSliceDataset(Dataset):
             self.backend = backend
 
         # Build slice index
-        if self.backend == "cached":
-            self.slices = self._build_cached_index(df)
+        if self.is_slice_csv:
+            self.slices = self._build_from_slice_csv(df)
         else:
-            self.slices = self._build_raw_index(df)
+            self.slices = self._build_from_volume_csv(df)
 
     # ── Index builders ──────────────────────────────────────────────
 
-    def _build_cached_index(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+    def _build_from_slice_csv(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """Build index from slice_metadata.csv (already slice-level)."""
         slices = []
         for _, row in df.iterrows():
             if not self.keep_empty and not row.get("has_foreground", True):
                 continue
-            slices.append({
-                "cached_path": row["cached_image_path"],
+
+            entry: Dict[str, Any] = {
                 "patient_id": row["patient_id"],
                 "phase": row["phase"],
                 "frame_id": int(row["frame_id"]),
                 "slice_idx": int(row["slice_index"]),
-            })
+                # Raw NIfTI paths (for raw backend fallback)
+                "image_path": row.get("image_path_raw", row.get("image_path", "")),
+                "mask_path": row.get("mask_path_raw", row.get("mask_path", "")),
+            }
+
+            if self.backend == "cached":
+                entry["cached_path"] = row.get("cached_image_path", "")
+            slices.append(entry)
         return slices
 
-    def _build_raw_index(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
-        """Build index from patient_metadata.csv (volume-level → expand to slices)."""
+    def _build_from_volume_csv(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Build index from patient_metadata.csv (volume-level → expand)."""
         slices = []
         for _, row in df.iterrows():
             mask_vol = nib.load(row["mask_path"]).get_fdata()
@@ -120,23 +141,39 @@ class ACDCSliceDataset(Dataset):
         return data["image"].astype(np.float32), data["mask"].astype(np.int64)
 
     def _load_raw(self, entry: Dict) -> Tuple[np.ndarray, np.ndarray]:
-        """Load from NIfTI and normalize on the fly."""
-        img_vol = nib.load(entry["image_path"]).get_fdata()
-        mask_vol = nib.load(entry["mask_path"]).get_fdata()
-        image = img_vol[:, :, entry["slice_idx"]].astype(np.float32)
-        mask = mask_vol[:, :, entry["slice_idx"]].astype(np.int64)
-        image = self._normalize(image)
+        """Load from NIfTI, normalize per-volume, resize slice."""
+        img_vol = nib.load(entry["image_path"]).get_fdata().astype(np.float32)
+        mask_vol = nib.load(entry["mask_path"]).get_fdata().astype(np.int64)
+
+        # Per-volume z-score normalization
+        img_vol = self._normalize_volume(img_vol)
+
+        image = img_vol[:, :, entry["slice_idx"]]
+        mask = mask_vol[:, :, entry["slice_idx"]]
+
+        # Resize if needed
+        h, w = image.shape
+        th, tw = self.target_size
+        if h != th or w != tw:
+            from skimage.transform import resize as sk_resize
+            image = sk_resize(image, (th, tw), order=1,
+                              preserve_range=True, anti_aliasing=False
+                              ).astype(np.float32)
+            mask = sk_resize(mask.astype(np.float64), (th, tw), order=0,
+                             preserve_range=True, anti_aliasing=False
+                             ).astype(np.int64)
+
         return image, mask
 
-    def _normalize(self, img: np.ndarray) -> np.ndarray:
-        """Per-slice z-score normalization with clipping."""
-        lo, hi = np.percentile(img, self.clip_percentiles)
-        img = np.clip(img, lo, hi)
-        mean = img.mean()
-        std = img.std()
+    def _normalize_volume(self, vol: np.ndarray) -> np.ndarray:
+        """Per-volume z-score normalization with clipping."""
+        lo, hi = np.percentile(vol, self.clip_percentiles)
+        vol = np.clip(vol, lo, hi)
+        mean = vol.mean()
+        std = vol.std()
         if std < 1e-8:
-            return np.zeros_like(img, dtype=np.float32)
-        return ((img - mean) / std).astype(np.float32)
+            return np.zeros_like(vol, dtype=np.float32)
+        return ((vol - mean) / std).astype(np.float32)
 
     # ── Main interface ──────────────────────────────────────────────
 
@@ -151,16 +188,16 @@ class ACDCSliceDataset(Dataset):
         else:
             image, mask = self._load_raw(entry)
 
-        # Apply augmentation (albumentations expects HW arrays)
+        # Apply augmentation (albumentations expects HW numpy arrays)
         if self.transform:
             augmented = self.transform(image=image, mask=mask)
             image = augmented["image"]
             mask = augmented["mask"]
 
-        # Ensure correct tensor format
+        # Convert to tensors if not already (ToTensorV2 handles this)
         if isinstance(image, torch.Tensor):
             if image.ndim == 2:
-                image = image.unsqueeze(0)
+                image = image.unsqueeze(0)  # (H,W) → (1,H,W)
         else:
             image = torch.from_numpy(image).unsqueeze(0)
 
@@ -168,8 +205,8 @@ class ACDCSliceDataset(Dataset):
             mask = torch.from_numpy(mask).long()
 
         return {
-            "image": image.float(),
-            "mask": mask.long(),
+            "image": image.float(),     # (1, H, W)
+            "mask": mask.long(),         # (H, W)
             "meta": {
                 "patient_id": entry["patient_id"],
                 "phase": entry["phase"],
@@ -177,3 +214,79 @@ class ACDCSliceDataset(Dataset):
                 "slice_idx": entry["slice_idx"],
             },
         }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Convenience: build train/val dataloaders from configs
+# ──────────────────────────────────────────────────────────────────────
+
+def build_dataloaders(
+    metadata_csv: str,
+    split_file: str,
+    batch_size: int = 16,
+    num_workers: int = 4,
+    pin_memory: bool = True,
+    target_size: Tuple[int, int] = (256, 256),
+    aug_cfg: Optional[Dict[str, Any]] = None,
+    keep_empty: bool = False,
+    backend: str = "auto",
+) -> Dict[str, DataLoader]:
+    """
+    Build train + val DataLoaders from a single split file.
+
+    Args:
+        metadata_csv: path to slice_metadata.csv or patient_metadata.csv
+        split_file:   path to dev_split.json or fold_X.json
+        batch_size:   training batch size (val uses same)
+        num_workers:  dataloader workers
+        pin_memory:   pin memory for GPU transfer
+        target_size:  (H, W) image size
+        aug_cfg:      augmentation config dict (from data.yaml)
+        keep_empty:   include background-only slices
+        backend:      "auto", "raw", or "cached"
+
+    Returns:
+        {"train": DataLoader, "val": DataLoader}
+    """
+    train_tf = get_train_transforms(target_size, aug_cfg)
+    val_tf = get_val_transforms(target_size)
+
+    train_ds = ACDCSliceDataset(
+        metadata_csv=metadata_csv,
+        split_file=split_file,
+        split_key="train",
+        transform=train_tf,
+        target_size=target_size,
+        keep_empty=keep_empty,
+        backend=backend,
+    )
+
+    val_ds = ACDCSliceDataset(
+        metadata_csv=metadata_csv,
+        split_file=split_file,
+        split_key="val",
+        transform=val_tf,
+        target_size=target_size,
+        keep_empty=keep_empty,
+        backend=backend,
+    )
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=True,
+    )
+
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=False,
+    )
+
+    return {"train": train_loader, "val": val_loader}
