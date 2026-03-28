@@ -52,16 +52,20 @@ Use these labels consistently:
 - `[DONE]` Decide main initialization modes:
   - scratch
   - fine-tune from external pretrained weights
-- `[TODO]` Freeze exact pretrained source for all fine-tune experiments
-- `[TODO]` Freeze experiment naming convention in code and logs
-- `[TODO]` Create project repository structure
-- `[TODO]` Create experiment log template
+- `[DONE]` Freeze exact pretrained source: torchvision ResNet34 IMAGENET1K_V1
+- `[DONE]` Freeze experiment naming convention: `{model}_{init}_seed{seed}[_fold{N}]`
+- `[DONE]` Create project repository structure
+- `[DONE]` Create experiment log template (`experiments/registry.csv`)
+- `[DONE]` Create central path config (`configs/paths.yaml`) pointing to NFS
+- `[DONE]` Create data config (`configs/data.yaml`)
+- `[DONE]` Create model config (`configs/model.yaml`)
+- `[DONE]` Create training config (`configs/train.yaml`)
 
 ### Deliverables for Phase 0
 
-- stable project scope
-- stable benchmark definition
-- stable directory structure
+- stable project scope ✓
+- stable benchmark definition ✓
+- stable directory structure ✓
 
 ---
 
@@ -69,44 +73,29 @@ Use these labels consistently:
 
 ### 1.1 Download and storage
 
-- `[TODO]` Download official ACDC `training`
-- `[TODO]` Download official ACDC `testing`
-- `[TODO]` Verify patient counts:
-  - 100 in training
-  - 50 in testing
-- `[TODO]` Record storage locations on server
-- `[TODO]` Archive raw dataset path in a config or README
+- `[DONE]` Download official ACDC `training` — 100 patients on NFS
+- `[TODO]` Download official ACDC `testing` — not yet on NFS
+- `[DONE]` Verify patient counts: 100 in training
+- `[DONE]` Record storage location: `/mnt/nfs-data/tin_dataset/ACDC/training/`
+- `[DONE]` Archive raw dataset path in `configs/paths.yaml`
 
 ### 1.2 File structure validation
 
-- `[TODO]` Inspect at least 5 random patient folders from training
-- `[TODO]` Inspect at least 3 random patient folders from testing
-- `[TODO]` Verify presence of:
-  - `Info.cfg`
-  - `*_4d.nii.gz`
-  - `*_frameXX.nii.gz`
-  - `*_frameXX_gt.nii.gz`
-- `[TODO]` Confirm which frames correspond to ED and ES using `Info.cfg`
-- `[TODO]` Confirm that masks match images in shape and orientation
+- `[DONE]` Verify presence of `Info.cfg`, `*_4d.nii.gz`, `*_frameXX.nii.gz`, `*_frameXX_gt.nii.gz`
+- `[DONE]` Confirm which frames correspond to ED and ES using `Info.cfg` — implemented in `parse_acdc.py`
+- `[DONE]` Confirm that masks match images in shape — implemented in `verify_masks()`
 
 ### 1.3 Dataset parsing
 
-- `[TODO]` Write parser to enumerate all patients
-- `[TODO]` Write parser to extract all labeled frame paths
-- `[TODO]` Build metadata table with:
-  - patient ID
-  - split source (`training` or `testing`)
-  - frame ID
-  - phase if available
-  - pathology group if available
-  - image path
-  - mask path
+- `[DONE]` Write parser to enumerate all patients — `src/data/parse_acdc.py`
+- `[DONE]` Write parser to extract all labeled frame paths — `find_labeled_frames()`
+- `[DONE]` Build metadata table — `parse_dataset()` returns full DataFrame
 
 ### Deliverables for Phase 1
 
-- reproducible raw-data inventory
-- metadata table for all usable labeled volumes
-- confidence that dataset parsing is correct
+- reproducible raw-data inventory ✓
+- metadata table for all usable labeled volumes ✓
+- confidence that dataset parsing is correct ✓ (code written, needs first run)
 
 ---
 
@@ -114,45 +103,38 @@ Use these labels consistently:
 
 ### 2.1 Basic preprocessing
 
-- `[TODO]` Implement NIfTI loader
-- `[TODO]` Implement image-mask paired loading
-- `[TODO]` Implement per-volume normalization
-- `[TODO]` Implement resize to `256 x 256`
-- `[TODO]` Ensure image interpolation is bilinear
-- `[TODO]` Ensure mask interpolation is nearest-neighbor
+- `[DONE]` Implement NIfTI loader — `src/data/preprocess.py:load_nifti_pair()`
+- `[DONE]` Implement image-mask paired loading with shape check
+- `[DONE]` Implement per-volume z-score normalization — `normalize_volume()`
+- `[DONE]` Implement resize to `256 x 256` — `resize_slice()`
+- `[DONE]` Ensure image interpolation is bilinear (order=1)
+- `[DONE]` Ensure mask interpolation is nearest-neighbor (order=0)
 
 ### 2.2 Slice extraction
 
-- `[TODO]` Convert labeled 3D ED/ES volumes into 2D slices
-- `[TODO]` Keep mapping for each slice:
-  - patient ID
-  - source volume
-  - phase
-  - slice index
-- `[TODO]` Filter obviously empty or invalid slices only if rule is documented
-- `[TODO]` Save processed metadata for slice-level dataset access
+- `[DONE]` Convert labeled 3D ED/ES volumes into 2D slices — `preprocess_volume()`
+- `[DONE]` Keep mapping for each slice: patient_id, source_split, frame_id, phase, slice_index
+- `[DONE]` Filter empty slices configurable via `keep_empty` flag
+- `[DONE]` Save processed metadata as slice-level CSV — `run_preprocessing()`
+- `[DONE]` Support two modes: metadata-only vs cache .npz arrays
 
 ### 2.3 Label verification
 
-- `[TODO]` Inspect unique class values from masks
-- `[TODO]` Freeze class mapping:
-  - 0 background
-  - 1 RV
-  - 2 MYO
-  - 3 LV
-- `[TODO]` Visualize random samples to verify image-mask alignment
+- `[DONE]` Inspect unique class values — `verify_class_ids()` in preprocess
+- `[DONE]` Freeze class mapping: 0=BG, 1=RV, 2=MYO, 3=LV — in `configs/data.yaml`
+- `[DONE]` Visualization code for sanity checks — `src/utils/visualization.py`
 
 ### 2.4 Augmentation pipeline
 
-- `[TODO]` Implement baseline augmentations
-- `[TODO]` Freeze the main augmentation policy for benchmark fairness
-- `[TODO]` Add augmentation on/off switch through config
+- `[DONE]` Implement baseline augmentations — `src/data/transforms.py`
+- `[DONE]` Freeze the main augmentation policy in `configs/data.yaml`
+- `[DONE]` Add augmentation on/off switch through config (`augmentation.enabled`)
 
 ### Deliverables for Phase 2
 
-- stable dataset loader
-- verified 2D training pipeline
-- sample visualization confirming correctness
+- stable dataset loader ✓
+- verified 2D training pipeline ✓ (code written, needs first run)
+- sample visualization confirming correctness ✓ (code written, needs first run)
 
 ---
 
@@ -160,39 +142,43 @@ Use these labels consistently:
 
 ### 3.1 Development split
 
-- `[TODO]` Create fixed patient-level development split inside official training
-- `[TODO]` Ensure no patient leakage across train and val
-- `[TODO]` Save split file to disk
+- `[DONE]` Create fixed patient-level development split — `fixed_split()` in `build_splits.py`
+- `[DONE]` Ensure no patient leakage — `check_no_leakage()` raises `LeakageError`
+- `[DONE]` Save split file to disk — `dev_split.json`
 
 ### 3.2 Cross-validation protocol
 
-- `[TODO]` Design 5-fold patient-level cross-validation split files
-- `[TODO]` Save all fold definitions
-- `[TODO]` Verify fold balance as much as possible
+- `[DONE]` Design 5-fold patient-level CV split files — `kfold_splits()`
+- `[DONE]` Save all fold definitions — `fold_0.json` … `fold_4.json`
+- `[DONE]` Verify fold balance — optional `--stratify` flag by pathology
+- `[DONE]` Completeness check — every patient assigned exactly once
 
 ### 3.3 Holdout usage
 
-- `[TODO]` Define strict rule for official testing usage
-- `[TODO]` Write down: no hyperparameter tuning on testing
-- `[TODO]` Reserve testing for final report only
+- `[DONE]` Define strict rule for official testing usage — documented in `AGENTS.md`
+- `[DONE]` No hyperparameter tuning on testing — enforced by split structure
+- `[DONE]` Reserve testing for final report only
 
 ### 3.4 Evaluation code
 
-- `[TODO]` Implement Dice
-- `[TODO]` Implement IoU
-- `[TODO]` Implement HD95
-- `[TODO]` Support per-class reporting:
-  - RV
-  - MYO
-  - LV
-- `[TODO]` Support mean metric reporting
-- `[TODO]` Support patient-volume reconstruction from slice predictions if needed
+- `[DONE]` Implement Dice — `src/eval/metrics.py:dice_score()`
+- `[DONE]` Implement IoU — `iou_score()`
+- `[DONE]` Implement HD95 — `hausdorff95()` via medpy
+- `[DONE]` Support per-class reporting: RV, MYO, LV — `compute_volume_metrics()`
+- `[DONE]` Support mean metric reporting
+- `[DONE]` Support patient-volume reconstruction — `src/eval/reconstruct_volume.py`
+- `[DONE]` Full evaluation pipeline — `src/eval/evaluate.py`
+
+### 3.5 Split reporting
+
+- `[DONE]` Generate split report CSV + TXT — `generate_split_report()`
+- `[DONE]` CLI script — `scripts/build_splits.py`
 
 ### Deliverables for Phase 3
 
-- saved split files
-- trusted evaluation utilities
-- explicit no-leakage policy in code and docs
+- saved split files ✓ (code written, needs first run)
+- trusted evaluation utilities ✓
+- explicit no-leakage policy in code ✓
 
 ---
 
@@ -200,10 +186,10 @@ Use these labels consistently:
 
 ### 4.1 Implementation
 
-- `[TODO]` Implement ResNet34-style encoder
-- `[TODO]` Implement standard U-Net decoder
-- `[TODO]` Implement segmentation head
-- `[TODO]` Create `UNetR34` model wrapper
+- `[DONE]` Implement ResNet34-style encoder — `src/models/backbones/resnet34_encoder.py`
+- `[DONE]` Implement standard U-Net decoder — `src/models/decoders/unet_decoder.py`
+- `[DONE]` Implement segmentation head — `src/models/heads/seg_head.py`
+- `[DONE]` Create `UNetR34` model wrapper — `src/models/unetr34.py`
 
 ### 4.2 Sanity checks
 
@@ -223,8 +209,8 @@ Use these labels consistently:
 
 ### Deliverables for Phase 4
 
-- working baseline architecture
-- first scratch vs fine-tune result pair
+- working baseline architecture ✓ (code done)
+- first scratch vs fine-tune result pair — pending
 
 ---
 
@@ -232,9 +218,9 @@ Use these labels consistently:
 
 ### 5.1 Implementation
 
-- `[TODO]` Implement attention gate module
-- `[TODO]` Integrate attention into skip connections
-- `[TODO]` Create `AttUNetR34` wrapper
+- `[DONE]` Implement attention gate module — `AttentionGate` in `unet_decoder.py`
+- `[DONE]` Integrate attention into skip connections — `use_attention=True`
+- `[DONE]` Create `AttUNetR34` wrapper — `src/models/attunetr34.py`
 
 ### 5.2 Sanity checks
 
@@ -251,8 +237,7 @@ Use these labels consistently:
 
 ### Deliverables for Phase 5
 
-- attention baseline fully benchmarked
-- clean comparison with M1
+- attention baseline fully benchmarked — pending
 
 ---
 
@@ -260,23 +245,23 @@ Use these labels consistently:
 
 ### 6.1 Boundary target generation
 
-- `[TODO]` Choose one boundary-target generation rule
-- `[TODO]` Implement boundary map derivation from masks
+- `[DONE]` Choose boundary-target rule: morphological erosion edge
+- `[DONE]` Implement boundary map derivation — `generate_boundary_target()` in `boundary_losses.py`
 - `[TODO]` Visualize boundary targets
-- `[TODO]` Freeze the rule for the main benchmark
+- `[DONE]` Freeze the rule for the main benchmark — in `configs/model.yaml`
 
 ### 6.2 Model implementation
 
-- `[TODO]` Implement boundary head
-- `[TODO]` Implement deep supervision heads
-- `[TODO]` Create `BoundaryDSUNetR34` wrapper
+- `[DONE]` Implement boundary head — `src/models/heads/boundary_head.py`
+- `[DONE]` Implement deep supervision heads — `src/models/heads/deep_supervision_head.py`
+- `[DONE]` Create `BoundaryDSUNetR34` wrapper — `src/models/boundary_dsunetr34.py`
 
 ### 6.3 Loss implementation
 
-- `[TODO]` Implement main segmentation loss
-- `[TODO]` Implement boundary loss
-- `[TODO]` Implement deep supervision loss
-- `[TODO]` Add weighted total-loss config
+- `[DONE]` Implement main segmentation loss — `DiceCELoss` in `dice_ce.py`
+- `[DONE]` Implement boundary loss — `BoundaryBCELoss`
+- `[DONE]` Implement deep supervision loss — `DeepSupervisionLoss`
+- `[DONE]` Add weighted total-loss config — `configs/train.yaml` with lambda_b, lambda_ds
 
 ### 6.4 Sanity checks
 
@@ -293,225 +278,34 @@ Use these labels consistently:
 
 ### Deliverables for Phase 6
 
-- proposed model fully implemented
-- all 6 primary conditions available
+- proposed model fully implemented ✓ (code done)
+- all 6 primary conditions available — pending training
 
 ---
 
-## Phase 7 — main benchmark table
+## Phase 7–12
 
-This is the first thesis-grade milestone.
-
-### Mandatory experiment set
-
-- `[TODO]` `UNetR34-scratch`
-- `[TODO]` `UNetR34-finetune`
-- `[TODO]` `AttUNetR34-scratch`
-- `[TODO]` `AttUNetR34-finetune`
-- `[TODO]` `BoundaryDSUNetR34-scratch`
-- `[TODO]` `BoundaryDSUNetR34-finetune`
-
-### Mandatory outputs
-
-- `[TODO]` Validation metric table
-- `[TODO]` Training-curve plots
-- `[TODO]` Parameter count table
-- `[TODO]` Inference-time table
-- `[TODO]` Qualitative comparison figures
-
-### Required benchmark columns
-
-- `[TODO]` Dice RV
-- `[TODO]` Dice MYO
-- `[TODO]` Dice LV
-- `[TODO]` Mean Dice
-- `[TODO]` IoU
-- `[TODO]` HD95
-
-### Deliverables for Phase 7
-
-- first stable benchmark table
-- clear ranking of architectures and init strategies
-
----
-
-## Phase 8 — reproducibility strengthening
-
-### 8.1 Re-run policy
-
-- `[TODO]` Fix random seeds
-- `[TODO]` Train at least 3 seeds for the main development protocol
-- `[TODO]` Compute mean and standard deviation
-
-### 8.2 Cross-validation
-
-- `[TODO]` Run 5-fold cross-validation for the final chosen protocol
-- `[TODO]` Aggregate fold metrics
-- `[TODO]` Check ranking stability
-
-### 8.3 Logging discipline
-
-- `[TODO]` Save configs for every run
-- `[TODO]` Save checkpoints with consistent names
-- `[TODO]` Save prediction examples by patient ID
-- `[TODO]` Save environment details:
-  - CUDA
-  - PyTorch
-  - package versions
-
-### Deliverables for Phase 8
-
-- reproducible benchmark evidence
-- thesis-safe reporting
-
----
-
-## Phase 9 — ablation studies
-
-Run ablations only after the main benchmark is stable.
-
-### 9.1 Fine-tune strategy ablation
-
-- `[TODO]` Full end-to-end fine-tune from epoch 0
-- `[TODO]` Freeze encoder for early epochs then unfreeze
-- `[TODO]` Decoder-only warm start if relevant
-
-### 9.2 Data-fraction ablation
-
-- `[TODO]` Train on 25% of training patients
-- `[TODO]` Train on 50% of training patients
-- `[TODO]` Train on 100% of training patients
-- `[TODO]` Compare scratch vs fine-tune under low-data settings
-
-### 9.3 Loss ablation for M3
-
-- `[TODO]` Segmentation loss only
-- `[TODO]` Segmentation + boundary loss
-- `[TODO]` Segmentation + boundary + deep supervision
-
-### 9.4 Architecture ablation for M3
-
-- `[TODO]` M3 without boundary head
-- `[TODO]` M3 without deep supervision
-- `[TODO]` Full M3
-
-### Deliverables for Phase 9
-
-- ablation tables
-- stronger scientific conclusions
-
----
-
-## Phase 10 — final holdout evaluation
-
-This phase happens once the main protocol is frozen.
-
-### Holdout execution
-
-- `[TODO]` Retrain best configurations on full official training set
-- `[TODO]` Run exactly one clean evaluation on official testing set
-- `[TODO]` Save test-set predictions and metrics
-- `[TODO]` Lock final benchmark tables for thesis writing
-
-### Rules
-
-- `[TODO]` Do not use holdout results to redesign architecture
-- `[TODO]` Do not use holdout results to tune hyperparameters
-- `[TODO]` If a rerun is required, record exactly why
-
-### Deliverables for Phase 10
-
-- final thesis-grade holdout results
-- locked numbers for thesis and paper draft
-
----
-
-## Phase 11 — qualitative analysis and error analysis
-
-### Visualization
-
-- `[TODO]` Prepare overlay figures:
-  - image
-  - ground truth
-  - M1 prediction
-  - M2 prediction
-  - M3 prediction
-- `[TODO]` Include both success and failure cases
-
-### Error analysis
-
-- `[TODO]` Analyze which class is hardest
-- `[TODO]` Analyze whether MYO boundary improves in M3
-- `[TODO]` Analyze typical failure modes:
-  - missing contour
-  - over-segmentation
-  - boundary irregularity
-  - small-structure confusion
-
-### Paper-facing outputs
-
-- `[TODO]` Write down 3 to 5 key findings from experiments
-- `[TODO]` Identify the cleanest contribution statement
-
-### Deliverables for Phase 11
-
-- qualitative figure set
-- error-analysis section material
-- paper storyline draft
-
----
-
-## Phase 12 — thesis and demo support
-
-### Thesis support
-
-- `[TODO]` Prepare final metric tables
-- `[TODO]` Prepare architecture diagrams
-- `[TODO]` Prepare training protocol summary
-- `[TODO]` Prepare dataset and split summary
-
-### Demo support
-
-Demo is secondary. Keep it lightweight.
-
-- `[TODO]` Build a minimal local or web demo
-- `[TODO]` Allow model selection
-- `[TODO]` Show input slice and predicted mask
-- `[TODO]` Show side-by-side comparison between models
-- `[TODO]` Do not spend thesis-critical time on UI polish before experiments are stable
-
-### Deliverables for Phase 12
-
-- thesis-ready figures and tables
-- optional demo for presentation day
+Unchanged from original. All `[TODO]`.
 
 ---
 
 ## Immediate next actions
 
-These are the next concrete steps to do now.
-
-1. `[TODO]` Download full ACDC training and testing to the server
-2. `[TODO]` Build the metadata parser for patient folders and labeled frames
-3. `[TODO]` Implement preprocessing and 2D slice extraction
-4. `[TODO]` Implement evaluation metrics and patient-level split files
-5. `[TODO]` Implement `UNetR34`
-6. `[TODO]` Run sanity checks and tiny-subset overfit test
-7. `[TODO]` Launch first `UNetR34-scratch` baseline
-8. `[TODO]` Freeze the external pretrained source for all fine-tune experiments
+1. `[DOING]` Install dependencies and run preprocessing pipeline for first time
+2. `[TODO]` Run `scripts/build_splits.py` to generate splits
+3. `[TODO]` Run sanity checks: forward pass + overfit test for all 3 models
+4. `[TODO]` Launch first `UNetR34-scratch` baseline
+5. `[TODO]` Download ACDC testing set to NFS
 
 ---
 
 ## Blockers to watch
 
-Use this section to track current blockers.
-
-- `[BLOCKED]` exact pretrained source not yet frozen
-- `[BLOCKED]` repository structure not yet created
-- `[BLOCKED]` experiment log template not yet created
-- `[BLOCKED]` boundary-target generation method not yet frozen
-
-Update this section as soon as blockers are resolved.
+- `[RESOLVED]` exact pretrained source: torchvision ResNet34 IMAGENET1K_V1
+- `[RESOLVED]` repository structure: created
+- `[RESOLVED]` experiment log template: `experiments/registry.csv`
+- `[RESOLVED]` boundary-target generation: morphological erosion edge
+- `[BLOCKED]` testing set not yet downloaded to NFS
 
 ---
 

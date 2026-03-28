@@ -100,6 +100,7 @@ class UNetDecoder(nn.Module):
         # Stage 2: 128 + 64  -> 64
         # Stage 3: 64  + 64  -> 32
         enc = list(reversed(encoder_channels))  # [512, 256, 128, 64, 64]
+        self._decoder_channels = list(decoder_channels)
         self.blocks = nn.ModuleList()
         in_ch = enc[0]
         for i, out_ch in enumerate(decoder_channels):
@@ -112,7 +113,7 @@ class UNetDecoder(nn.Module):
 
     @property
     def out_channels(self) -> int:
-        return self.blocks[-1].conv.block[3].out_channels
+        return self._decoder_channels[-1]
 
     def forward(
         self, features: List[torch.Tensor]

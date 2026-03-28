@@ -74,12 +74,16 @@ def main():
     train_tf = get_train_transforms(img_size, data_cfg.get("augmentation"))
     val_tf = get_val_transforms(img_size)
 
-    # Datasets
-    metadata_csv = f"{paths['metadata_dir']}/patient_metadata.csv"
+    # Datasets — prefer cached slice_metadata.csv if preprocessing was run
+    slice_csv = f"{paths['reports_dir']}/slice_metadata.csv"
+    volume_csv = f"{paths['metadata_dir']}/patient_metadata.csv"
+    metadata_csv = slice_csv if Path(slice_csv).exists() else volume_csv
+    logger.info(f"Dataset source: {metadata_csv}")
+
     train_ds = ACDCSliceDataset(metadata_csv, split_file, "train",
-                                transform=train_tf)
+                                transform=train_tf, backend="auto")
     val_ds = ACDCSliceDataset(metadata_csv, split_file, "val",
-                              transform=val_tf)
+                              transform=val_tf, backend="auto")
 
     batch_size = args.batch_size or train_cfg["training"]["batch_size"]
     train_loader = DataLoader(
